@@ -35,7 +35,7 @@ data/                    raw CSV (not committed) and data/processed/ (created by
 notebooks/               the six notebooks, saved with their outputs
 reports/REPORT.md        the written report
 reports/figures/         every figure, saved by the notebooks
-reports/metrics/         validation and test metrics as CSV
+reports/metrics/         validation and test metrics as CSV (created when you run 03 and 04, not committed)
 requirements.txt
 ```
 
@@ -95,7 +95,7 @@ Test window: 16 July to 13 October 2026, 89 days per city. Mean absolute error i
 - Wind and rain go with cleaner air in most cities, while ozone rises with sunlight. Day-to-day temperature swings
   of two capitals are linked when they are close (correlation 0.59 under 250 km) and unrelated beyond about 2,000 km.
 
-All metrics (MAE, RMSE, sMAPE, R2) for every model and city are in `reports/metrics/` and in
+All metrics (MAE, RMSE, sMAPE, R2) for every model and city are printed in notebooks 03 and 04 and summarised in
 [reports/REPORT.md](reports/REPORT.md).
 
 ## Limitations

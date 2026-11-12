@@ -24,8 +24,8 @@ The Kaggle Global Weather Repository has one weather snapshot per capital city p
 170,928 rows and 41 columns, from 16 May 2024 to 13 October 2026 (about 2.4 years). It covers temperature,
 wind, pressure, precipitation, humidity, cloud, visibility, UV and six air quality measures.
 
-Every number in this report comes from the executed notebooks in `notebooks/`. Full metric tables are in
-`reports/metrics/`.
+Every number in this report comes from the executed notebooks in `notebooks/`. Full metric tables are printed in
+notebooks 03 and 04, which also write them as CSV files to `reports/metrics/` when run.
 
 ## 1. Data cleaning (notebook 01)
 
