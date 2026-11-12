@@ -41,8 +41,11 @@ Every number in this report comes from the executed notebooks in `notebooks/`. F
   sea-level pressure (for example 771 mb in Addis Ababa). I removed values below 950 mb (36) and values more than
   15 mb below the same city's median of the previous 7 days in that week (39 more). The same rule fires about
   4 times per week in normal summer weeks, so most of the 39 are real errors.
-- **A corrupted day.** On 17 August 2026 about half of all locations jump by more than 8 C for one day, with
-  labels like "Blizzard" in London in August. I removed all 184 rows of that day.
+- **A corrupted day.** I flag a day as corrupted when more than 30% of at least 100 locations jump by more than
+  8 C for one day. Over the whole period only 17 August 2026 meets this (about half of all locations, with labels
+  like "Blizzard" in London in August). I removed its 184 rows. I first noticed it in the test plots, and both this
+  day and the July pressure week fall inside the test window, so these two cleaning choices were made with test-period
+  data in view. With the day kept, the naive baseline's test MAE would be 0.14 to 0.39 C higher per city.
 - **Gaps** from cleaning (94 values) were filled with the previous day's value of the same location, at most
   3 days back. This only uses the past.
 - **Result:** 161,377 rows.
@@ -56,7 +59,8 @@ I kept the local hour as a column and used it as a model feature.
 ![Snapshot hour drift](figures/01_snapshot_hour_drift.png)
 
 **Normalization.** The saved file keeps real units. In the models, continuous inputs are standardized, with a log
-first for precipitation and air quality. The scaler is always fit on the training rows only.
+first for precipitation and air quality. The scaler is fit only on the rows a model is trained on: train for the
+validation forecasts, train and validation for the final test forecasts.
 
 ## 2. Exploratory analysis (notebook 02)
 
@@ -71,7 +75,7 @@ first for precipitation and air quality. The scaler is always fit on the trainin
 - The July mean fell every year in both hemispheres (north 28.5, 27.1, 24.7 C). That is what earlier snapshots
   in the day would produce, so I do not read it as a climate trend.
 - 32.5% of snapshots report precipitation. The amount at snapshot time is small (median 0.10 mm when it rains).
-  New Delhi's monsoon is clear: 31 to 47% of snapshots are wet in July to September, 0 to 7% from October to May.
+  New Delhi's monsoon is clear: 26 to 47% of snapshots are wet in July to September, 0 to 7% from October to May.
 - Temperature and feels-like (0.97) and wind and gust (0.91) are near copies of each other.
 
 ![Daily temperature in the six cities](figures/02_city_temperature.png)
@@ -83,11 +87,14 @@ Canberra and Buenos Aires. One model per city.
 
 **Features** (all known the day before): temperature 1, 2, 3 and 7 days earlier, 7 and 30 day means, Fourier
 terms for the time of year, yesterday's humidity, cloud, wind, precipitation, pressure and pressure change, and
-yesterday's snapshot hour. A test checks that every lag equals the real value of the previous day.
+yesterday's snapshot hour. A check compares 57,407 feature values, on every row including the test window, with
+the readings of the previous days. All match.
 
 **Splits** (chronological, no shuffling): train to 16 April 2026, validation 17 April to 15 July 2026, test
-16 July to 13 October 2026 (89 days per city). Settings and ensemble weights were chosen on validation. The models
-were then refit on train and validation and used once on test, one day ahead.
+16 July to 13 October 2026 (89 days per city). Settings and ensemble weights were chosen on validation, and I chose
+the weighted ensemble as the main model before looking at the test results. The models were then refit on train and
+validation and used once on test, one day ahead. One caveat: validation is used twice (Ridge's penalty, then the
+ensemble weights), which slightly favours Ridge in the weights.
 
 **Models.** Two baselines (naive: yesterday's value; seasonal naive: same day last year), Ridge, Random Forest
 (300 trees), Gradient Boosting (300 trees), SARIMAX with Fourier terms (a 365-day seasonal ARIMA is not possible
@@ -100,28 +107,36 @@ with 2.4 years of data), an equal-weight ensemble and a weighted ensemble (weigh
 | Moscow | 1.96 | 3.87 | 1.77 | 1.83 | 1.77 | 1.88 | 1.77 | 1.77 |
 | London | 2.11 | 2.78 | 1.89 | 1.91 | 1.86 | 1.88 | 1.85 | 1.88 |
 | New Delhi | 1.65 | 3.61 | 1.77 | 1.71 | 1.83 | 1.79 | 1.75 | 1.74 |
-| Singapore | 0.81 | 2.04 | 1.16 | 0.83 | 0.86 | 1.45 | 1.04 | 0.88 |
+| Singapore | 0.81 | 2.04 | 1.16 | 0.83 | 0.86 | 1.45 | 1.04 | 0.86 |
 | Canberra | 2.40 | 3.65 | 2.13 | 2.38 | 2.22 | 2.39 | 2.19 | 2.11 |
-| Buenos Aires | 2.29 | 3.79 | 2.36 | 2.07 | 2.08 | 2.32 | 2.13 | 2.17 |
-| **Average** | 1.87 | 3.29 | 1.84 | 1.79 | 1.77 | 1.95 | 1.79 | 1.76 |
+| Buenos Aires | 2.29 | 3.79 | 2.36 | 2.07 | 2.08 | 2.32 | 2.13 | 2.16 |
+| **Average** | 1.87 | 3.29 | 1.84 | 1.79 | 1.77 | 1.95 | 1.79 | 1.75 |
 
-Average over the six cities for the other metrics:
+Average over the six cities for the other metrics (sMAPE is unstable near 0 C and R2 depends on each city's
+spread, so their averages are only a rough summary):
 
 | Metric | Naive | Seasonal naive | Ridge | Random Forest | Gradient Boosting | SARIMAX | Ensemble (avg) | Ensemble (weighted) |
 |---|---|---|---|---|---|---|---|---|
-| RMSE (C) | 2.55 | 4.09 | 2.37 | 2.33 | 2.31 | 2.44 | 2.30 | 2.29 |
-| sMAPE (%) | 12.79 | 21.21 | 12.27 | 12.02 | 11.83 | 12.76 | 11.84 | 11.76 |
-| R2 | 0.17 | -1.10 | 0.25 | 0.31 | 0.31 | 0.17 | 0.30 | 0.32 |
+| RMSE (C) | 2.55 | 4.09 | 2.37 | 2.33 | 2.31 | 2.44 | 2.30 | 2.28 |
+| sMAPE (%) | 12.79 | 21.21 | 12.27 | 12.02 | 11.83 | 12.76 | 11.84 | 11.74 |
+| R2 | 0.17 | -1.10 | 0.25 | 0.31 | 0.31 | 0.17 | 0.30 | 0.33 |
 
 What this shows:
-- The weighted ensemble has the lowest average MAE, 1.76 C against 1.87 C for naive (about 6% better).
-  It beats naive in Moscow, London, Canberra and Buenos Aires.
+- The weighted ensemble has the lowest average MAE, 1.755 C against 1.871 C for naive (about 6% better).
+  Its MAE is lower than naive in Moscow, London, Canberra and Buenos Aires.
+- A moving block bootstrap (blocks of 7 days, 2,000 resamples) gives a 95% interval for the MAE difference against
+  naive. On average over the six cities the ensemble is reliably better: -0.117 C (interval -0.235 to -0.064). Per
+  city it is reliably better only in Moscow, London and Canberra; in the other three the interval includes 0.
+  The gaps between the ensemble, Gradient Boosting and Random Forest are far smaller than these intervals, so the
+  test window cannot rank them.
 - **No model beats naive in New Delhi or Singapore.** In Singapore the readings become almost constant from
   September 2026 (monthly standard deviation 0.3 to 0.5 C against about 2 C before), so "same as yesterday" is
-  nearly perfect. On validation the models were better than naive there (1.53 vs 2.10 C).
+  nearly perfect. On validation the models were better than naive there (1.53 vs 2.10 C). This suggests the
+  data changed in the test window, but I could not prove it.
 - SARIMAX is worse than naive on average (1.95 C), mainly because of Singapore.
 - Every model beats the seasonal naive baseline in every city.
-- The largest gain over naive is 12.4%. I treated anything above 30% as a sign of leakage; nothing came close.
+- The largest gain over naive is 12.4%. As a sanity check I would have looked again at anything above 30%;
+  nothing came close. An independent review of the notebooks found no leakage.
 - R2 is low because within one 90-day window most of the variation left is day-to-day weather.
 
 ![Test MAE compared with naive](figures/04_test_mae_vs_naive.png)
@@ -143,9 +158,10 @@ hour and the seasonal terms matter little for the change from one day to the nex
 - The methods overlap little (473 readings flagged by both, 13.5%). Isolation Forest mostly finds days with heavy
   rain and poor visibility, which a temperature-only method cannot see.
 - The first day of data has the most flags (18.6% of locations), because it was recorded at 08:45 UTC while the
-  following days were recorded around 16:00 UTC. No other day goes above 8.1%.
+  following days were recorded around 16:00 UTC. Among days with at least 100 locations, no other day goes above 8.1%.
 - PM2.5 outliers (above 194.8 ug/m3 on a log box plot rule): 881 readings (0.55%), concentrated in Riyadh (22.4%
-  of days), Jakarta (20.2%) and Beijing (14.8%). These are pollution episodes, not errors.
+  of days), Jakarta (20.2%) and Beijing (14.8%). They are within the possible range and most likely pollution
+  episodes, so I kept them, but I did not check them against outside sources.
 
 ![Method comparison](figures/05_method_comparison.png)
 
@@ -160,7 +176,8 @@ equator to 21.8 C at 30 to 45 N, and the southern bands peak in December to Febr
 **Air quality vs weather.** I compared correlations pooled over all cities with correlations inside each city
 (median over 185 locations), because pooled numbers mix city differences with day-to-day effects.
 - Wind goes with lower NO2 (-0.33, same sign in 96% of locations), SO2 (-0.24) and PM2.5 (-0.17). PM2.5 is not
-  a straight line though: it is lowest at 15 to 20 km/h and higher again at 30 to 40 km/h.
+  a straight line though: relative to each city's median it falls from 1.10 on calm days to 0.89 at 15 to 20 km/h,
+  rises to 1.12 at 30 to 40 km/h, and is 0.87 above 40 km/h (only 794 readings).
 - Rain goes with fewer particles (PM10 -0.16, PM2.5 -0.15).
 - Ozone rises with UV (0.33) and temperature (0.33) and falls with humidity (-0.37).
 - All of these are weak to moderate. Weather explains only part of the day-to-day change in air quality.
@@ -178,12 +195,12 @@ correlated at 0.59 when they are less than 250 km apart, 0.32 at 500 to 1,000 km
 
 ## Key findings
 
-1. Latitude explains most of the climate differences: mean temperature (correlation -0.76) and seasonal range (0.85).
+1. Latitude is strongly linked to climate: mean temperature (correlation -0.76) and seasonal range (0.85).
 2. A global average temperature is misleading because the hemispheres cancel out; city-level forecasts are more meaningful.
-3. One day ahead, "same as yesterday" is hard to beat. The best method (weighted ensemble) is about 6% better on
-   average and wins in four of six cities.
+3. One day ahead, "same as yesterday" is hard to beat. The weighted ensemble, chosen on validation, is about 6%
+   better on average (a reliable difference), but per city the gain is only clear in Moscow, London and Canberra.
 4. Yesterday's temperature, pressure and humidity are the most useful inputs.
-5. Wind and rain go with cleaner air, while ozone follows sunlight.
+5. Inside each city, wind and rain go with cleaner air, while ozone rises with UV. These are correlations, not causes.
 6. Weather anomalies are regional: correlation between cities fades to zero beyond about 2,000 km.
 
 ## Limitations
@@ -198,5 +215,6 @@ correlated at 0.59 when they are less than 250 km apart, 0.32 at 500 to 1,000 km
   The last two are in the test window.
 - **Coverage.** One capital per country, so large countries are represented by a single point, and some regions
   (Oceania, South America) have few locations.
-- **17 August 2026 was found by looking at the data**, and it falls in the test window. I documented the removal in
-  notebook 01. It does not change which model was chosen, since choices were made on validation.
+- **Two cleaning choices used test-period data**: the removal of 17 August 2026 and the pressure rule for 25 to 31
+  July 2026. Both are documented in notebook 01. They do not change which model was chosen (that was done on
+  validation), but they do change the test numbers.
